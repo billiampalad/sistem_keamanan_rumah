@@ -8,8 +8,11 @@ import pygame
 import threading
 import pandas as pd
 import time
+from torch.serialization import add_safe_globals
+from ultralytics.nn.tasks import DetectionModel
 
-# Load model YOLOv8
+# Allowlist class DetectionModel
+add_safe_globals([DetectionModel])
 model = YOLO("yolov8n.pt")
 
 # Function to play the alarm
