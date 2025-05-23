@@ -11,16 +11,24 @@ import gc
 import urllib.parse
 import logging
 import os
+import sys
+
+# Konfigurasi environment untuk deployment
+os.environ['YOLO_VERBOSE'] = 'False'
+os.environ['ULTRALYTICS_AUTOINSTALL'] = 'False'
 
 # Konfigurasi logging untuk mengurangi output
-logging.getLogger('ultralytics').setLevel(logging.WARNING)
-os.environ['YOLO_VERBOSE'] = 'False'
+logging.getLogger('ultralytics').setLevel(logging.ERROR)
+logging.getLogger('torch').setLevel(logging.ERROR)
 
-# Optimisasi torch untuk CPU
-torch.set_num_threads(2)  # Batasi thread untuk CPU yang terbatas
-if torch.cuda.is_available():
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
+# Optimisasi torch untuk CPU dengan error handling
+try:
+    torch.set_num_threads(min(2, torch.get_num_threads()))
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+except Exception:
+    pass  # Ignore torch optimization errors on some platforms
 
 # Inisialisasi state session yang lebih efisien
 if 'stop_stream' not in st.session_state:
@@ -167,20 +175,35 @@ system_status = st.empty()
 def load_optimized_model():
     """Load model YOLO nano yang sudah dioptimasi"""
     try:
-        # Gunakan YOLOv8 nano - model terkecil dan tercepat
-        model = YOLO("yolov8n.pt")
-        
-        # Optimisasi model untuk CPU
-        model.model.eval()
-        
-        # Warm-up model dengan frame dummy
-        dummy_frame = np.zeros((320, 240, 3), dtype=np.uint8)
-        _ = model(dummy_frame, verbose=False)
-        
-        return model
+        with st.spinner("Downloading AI model... (First time only)"):
+            # Gunakan YOLOv8 nano - model terkecil dan tercepat
+            model = YOLO("yolov8n.pt")
+            
+            # Optimisasi model untuk CPU
+            if hasattr(model, 'model'):
+                model.model.eval()
+            
+            # Warm-up model dengan frame dummy
+            dummy_frame = np.zeros((320, 240, 3), dtype=np.uint8)
+            try:
+                _ = model(dummy_frame, verbose=False, device='cpu')
+            except Exception:
+                _ = model(dummy_frame, verbose=False)
+            
+            # Force garbage collection
+            gc.collect()
+            
+            return model
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
-        return None
+        st.info("Trying alternative model loading method...")
+        try:
+            # Fallback method
+            model = YOLO("yolov8n.pt", verbose=False)
+            return model
+        except Exception as e2:
+            st.error(f"Fallback also failed: {str(e2)}")
+            return None
 
 # Load model
 with st.spinner("Loading AI model..."):
