@@ -7,31 +7,43 @@ from ultralytics import YOLO
 import pygame
 import threading
 import pandas as pd
+import time
 
 # Load model YOLOv8
 model = YOLO("yolov8n.pt")
 
-# Fungsi memainkan alarm
+# Function to play the alarm
 def play_alarm():
     try:
         pygame.mixer.init()
         pygame.mixer.music.load("alarm system.mp3")
         pygame.mixer.music.play(-1)
     except Exception as e:
-        print(f"Gagal memutar alarm: {e}")
+        print(f"Failed to play alarm: {e}")
 
-# Fungsi menghentikan alarm
+# Function to stop the alarm
 def stop_alarm():
     try:
         if pygame.mixer.get_init():
             pygame.mixer.music.stop()
     except Exception as e:
-        print(f"Gagal menghentikan alarm: {e}")
+        print(f"Failed to stop alarm: {e}")
 
-# Fungsi utama deteksi
+# Function to create RTSP URL with authentication
+def create_rtsp_url(base_url, username=None, password=None):
+    if username and password:
+        if "@" in base_url:
+            # URL already has authentication
+            return base_url
+        protocol = base_url.split("://")[0]
+        rest = base_url.split("://")[1]
+        return f"{protocol}://{username}:{password}@{rest}"
+    return base_url
+
+# Main detection function
 def detect_suspicious_activity(frame, model, conf_threshold, heatmap, aois,
                                activity_logs, max_repeated_movements, alarm_triggered,
-                               capture_times_deque, heatmap_history):
+                               heatmap_history):
     results = model(frame)
     current_activities = defaultdict(int)
     suspicious = False
@@ -63,114 +75,155 @@ def detect_suspicious_activity(frame, model, conf_threshold, heatmap, aois,
             suspicious = True
             if not alarm_triggered[0]:
                 alarm_triggered[0] = True
-                st.warning(f"\U0001F6A8 **ALARM**: Gerakan mencurigakan di Zona {idx+1}!")
+                st.warning(f"\U0001F6A8 *ALARM*: Suspicious movement in Zone {idx+1}!")
                 threading.Thread(target=play_alarm, daemon=True).start()
 
     heatmap_max = int(np.max(heatmap))
     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
 
-    # Tambahkan ke grafik setiap frame agar bisa menurun jika aktivitas turun
     heatmap_history.append({"time": timestamp, "activity": heatmap_max})
 
-    if heatmap_max > 3:
+    if heatmap_max > 1:
         suspicious = True
         if not alarm_triggered[0]:
             alarm_triggered[0] = True
-            st.warning("\U0001F6A8 **ALARM**: Aktivitas mencurigakan terdeteksi!")
+            st.warning("\U0001F6A8 *ALARM*: Suspicious activity detected!")
             threading.Thread(target=play_alarm, daemon=True).start()
 
     elif heatmap_max < 1:
         if alarm_triggered[0]:
             alarm_triggered[0] = False
             stop_alarm()
-            st.info("✅ Tidak ada aktivitas mencurigakan. Alarm dimatikan.")
+            st.info("\u2705 No suspicious activity. Alarm turned off.")
 
     return frame
 
-# Konfigurasi Streamlit
+# Streamlit configuration
 st.set_page_config(page_title="Smart Security System", layout="wide")
-st.title("\U0001F512 Smart Security System")
+st.title("\U0001F512 Smart Security System (IP Camera)")
 
 with st.sidebar:
-    st.header("\u2699\ufe0f Pengaturan Sistem")
-    video_source = st.radio("**Sumber Video**", ["Webcam", "CCTV (HDMI via Capture Card)"], index=0)
-    conf_threshold = st.slider("**Tingkat Kepercayaan Deteksi**", 0.0, 1.0, 0.5, 0.01)
-    max_reps = st.number_input("**Batas Gerakan untuk Alarm**", 1, 50, 5)
+    st.header("\u2699\ufe0f System Settings")
+    camera_type = st.radio("Camera Type", ["IP Camera (HTTP)", "RTSP Stream"])
+    
+    if camera_type == "IP Camera (HTTP)":
+        ip_camera_url = st.text_input("Enter IP Camera URL", placeholder="http://192.168.1.10:8080/video")
+    else:
+        ip_camera_url = st.text_input("Enter RTSP URL", placeholder="rtsp://username:password@192.168.1.10:554/stream")
+        rtsp_username = st.text_input("RTSP Username (if not in URL)")
+        rtsp_password = st.text_input("RTSP Password (if not in URL)", type="password")
+    
+    conf_threshold = st.slider("*Detection Confidence Threshold*", 0.0, 1.0, 0.5, 0.01)
+    max_reps = st.number_input("*Movement Threshold for Alarm*", 1, 50, 5)
+    start_stream = st.button("\U0001F3A5 Start Streaming")
 
-    st.subheader("\U0001F4DC Zona Pengawasan (AOI)")
-    num_aois = st.number_input("Jumlah Zona", 0, 5, 1)
+    st.subheader("\U0001F4DC Surveillance Zones (AOI)")
+    num_aois = st.number_input("Number of Zones", 0, 5, 1)
     aois = []
     for i in range(num_aois):
-        st.markdown(f"### Zona {i+1}")
-        cols = st.columns(2)
-        with cols[0]:
-            x1 = st.slider(f"X1 (Kiri)", 0, 1920, 200, key=f"x1_{i}")
-            y1 = st.slider(f"Y1 (Atas)", 0, 1080, 200, key=f"y1_{i}")
-        with cols[1]:
-            x2 = st.slider(f"X2 (Kanan)", 0, 1920, 800, key=f"x2_{i}")
-            y2 = st.slider(f"Y2 (Bawah)", 0, 1080, 600, key=f"y2_{i}")
-        aois.append((x1, y1, x2, y2))
+        with st.expander(f"Zone {i+1} Settings"):
+            x1 = st.slider(f"X1 (Left)", 0, 1920, 200, key=f"x1_{i}")
+            y1 = st.slider(f"Y1 (Top)", 0, 1080, 200, key=f"y1_{i}")
+            x2 = st.slider(f"X2 (Right)", 0, 1920, 800, key=f"x2_{i}")
+            y2 = st.slider(f"Y2 (Bottom)", 0, 1080, 600, key=f"y2_{i}")
+            aois.append((x1, y1, x2, y2))
 
 col1, col2 = st.columns(2)
 with col1:
     st.subheader("\U0001F3A5 Live Camera Feed")
     camera_placeholder = st.empty()
 with col2:
-    st.subheader("\U0001F4CA Grafik Aktivitas")
+    st.subheader("\U0001F4CA Activity Graph")
     heatmap_placeholder = st.empty()
 
 status_text = st.empty()
-status_text.info("\U0001F7E2 **Sistem aktif**. Menunggu deteksi...")
+status_text.info("\U0001F7E2 *System active*. Waiting for detection...")
 
-cap = None
-if video_source == "Webcam":
-    if st.sidebar.button("\U0001F3A5 Mulai Streaming Webcam"):
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            st.sidebar.error("❌ Gagal membuka webcam!")
-        else:
-            st.sidebar.success("✅ Webcam aktif!")
-else:
-    cam_idx = st.sidebar.number_input("Indeks Kamera CCTV", 0, 10, 0)
-    if st.sidebar.button("\U0001F517 Sambungkan ke CCTV"):
-        cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-        if not cap.isOpened():
-            st.sidebar.error("❌ Gagal terhubung ke CCTV!")
-        else:
-            st.sidebar.success("✅ CCTV terkoneksi!")
-
-if cap and cap.isOpened():
-    heatmap = np.zeros((1080, 1920), dtype=np.uint8)
-    activity_logs = defaultdict(list)
-    alarm_triggered = [False]
-    capture_times = deque()
-    heatmap_history = deque(maxlen=100)
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            status_text.error("❌ Gagal membaca frame.")
+if start_stream:
+    if camera_type == "RTSP Stream":
+        ip_camera_url = create_rtsp_url(ip_camera_url, rtsp_username, rtsp_password)
+    
+    # Set OpenCV to use FFMPEG with proper timeout
+    cv2.ocl.setUseOpenCL(False)
+    cap = cv2.VideoCapture()
+    
+    # Try to open the stream with retries
+    max_retries = 3
+    retry_delay = 2
+    connected = False
+    
+    for i in range(max_retries):
+        try:
+            if not cap.open(ip_camera_url):
+                raise Exception("Failed to open stream")
+            
+            # Test if we can read a frame
+            ret, frame = cap.read()
+            if not ret:
+                raise Exception("Failed to read frame")
+            
+            connected = True
             break
+        except Exception as e:
+            if i < max_retries - 1:
+                status_text.warning(f"⚠ Connection attempt {i+1}/{max_retries} failed. Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                continue
+            else:
+                status_text.error(f"❌ Failed to connect to camera after {max_retries} attempts. Error: {str(e)}")
+                st.stop()
+    
+    if connected:
+        status_text.success("✅ Successfully connected to camera stream!")
         
-        heatmap = (heatmap * 0.95).astype(np.uint8)
-
-        frame = cv2.resize(frame, (1920, 1080))
-        frame = detect_suspicious_activity(
-            frame, model, conf_threshold, heatmap, aois,
-            activity_logs, max_reps, alarm_triggered, capture_times, heatmap_history
-        )
-
-        camera_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), channels="RGB", use_container_width=True)
-
-        df_heat = pd.DataFrame(heatmap_history)
-        if not df_heat.empty:
-            heatmap_placeholder.line_chart(df_heat.set_index("time"))
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    cap.release()
-else:
-    status_text.warning("⚠️ Silakan pilih sumber video dan pastikan kamera terhubung.")
+        # Get frame size from camera or use default
+        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1920
+        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1080
+        
+        heatmap = np.zeros((frame_height, frame_width), dtype=np.uint8)
+        activity_logs = defaultdict(list)
+        alarm_triggered = [False]
+        heatmap_history = deque(maxlen=100)
+        
+        while True:
+            try:
+                ret, frame = cap.read()
+                if not ret:
+                    status_text.warning("⚠ Frame read error. Trying to reconnect...")
+                    time.sleep(1)
+                    cap.release()
+                    cap = cv2.VideoCapture(ip_camera_url)
+                    continue
+                
+                # Resize frame if needed
+                frame = cv2.resize(frame, (frame_width, frame_height))
+                
+                # Update heatmap (decay old values)
+                heatmap = (heatmap * 0.95).astype(np.uint8)
+                
+                frame = detect_suspicious_activity(
+                    frame, model, conf_threshold, heatmap, aois,
+                    activity_logs, max_reps, alarm_triggered, heatmap_history
+                )
+                
+                # Display the frame
+                camera_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), 
+                                       channels="RGB", 
+                                       use_container_width=True)
+                
+                # Update activity graph
+                df_heat = pd.DataFrame(heatmap_history)
+                if not df_heat.empty:
+                    heatmap_placeholder.line_chart(df_heat.set_index("time"))
+                
+                # Check for stop condition
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+                    
+            except Exception as e:
+                status_text.error(f"❌ Error during processing: {str(e)}")
+                break
+        
+        cap.release()
+        stop_alarm()
+        status_text.info("🚫 Stream stopped")
