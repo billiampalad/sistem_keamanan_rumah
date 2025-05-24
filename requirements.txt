@@ -9,4 +9,8 @@ Pillow==10.0.1
 requests==2.31.0
 PyYAML==6.0.1
 matplotlib==3.7.5
+<<<<<<< HEAD
 psutil==5.9.8
+=======
+psutil==5.9.8
+>>>>>>> 611738e4738114923a12597cf048257887c1bdf3
