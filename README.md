@@ -272,18 +272,11 @@ sistem_keamanan_rumah/
 
 ---
 
-## 👥 Project Team & Acknowledgments
+## 👥 Project & Acknowledgments
 
 This project was conceived and developed as the Final Project for the **Machine Learning Workshop** course at **Politeknik Negeri Manado** (2025).
 
 * **Institution:** D4 Informatics Engineering, Department of Electrical Engineering, Politeknik Negeri Manado
-
-### 👨‍💻 Group 1 (Class 6TI5):
-* **Clynten Billiam Palad** — *Team Lead & Developer*
-* **Iqbal Jabar Marjan**
-* **Delon Gilbert Yeheskiel Temo** 
-* **Israel Jody Mamusung** 
-* **Wilsaylin Tahupia** 
 
 ---
 
