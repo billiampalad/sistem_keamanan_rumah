@@ -276,16 +276,6 @@ sistem_keamanan_rumah/
 
 This project was conceived and developed as the Final Project for the **Machine Learning Workshop** course at **Politeknik Negeri Manado** (2025).
 
-* **Institution:** D4 Informatics Engineering, Department of Electrical Engineering, Politeknik Negeri Manado
-* **Course Supervisor:** Harson Kapoh, ST., MT
-
-### 👨‍💻 Group 1 (Class 6TI5):
-* **Clynten Billiam Palad** (NIM: 22024108) — *Team Lead & Developer*
-* **Iqbal Jabar Marjan** (NIM: 22024102)
-* **Delon Gilbert Yeheskiel Temo** (NIM: 22024095)
-* **Israel Jody Mamusung** (NIM: 22024110)
-* **Wilsaylin Tahupia** (NIM: 22024113)
-
 ---
 
 ## 📄 License
